@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.7.0 <0.9.0;
 
-import "../node_modules/@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "../node_modules/@openzeppelin/contracts/access/Ownable.sol";
-
 error ContractAlreadyHaveBrandName();
 error ContractDoesntHaveBrandName();
 error ContractNoExist();
@@ -11,9 +8,10 @@ error ContractAlreadyCreate();
 error ContractAlreadyInactive();
 error ContractAlreadyActive();
 error CompanyNotOfficialStore();
-error CompanyInactive();
+error TimeIsIncorect();
 
-contract OfficialStore is ERC721, Ownable {
+contract OfficialStore {
+    address private owner;
     /*
      * ContractBrand is structure of brand and contract definition.
      * `name` will represent name of toko that assign as principle from Brand
@@ -23,10 +21,10 @@ contract OfficialStore is ERC721, Ownable {
      * `active` will represent activation brand as principle official store
      */
     struct ContractBrand {
-        string name;
-        string district;
-        address mainBrandAddress;
+        bytes32 name;
+        bytes32 district;
         uint256 expiredDate;
+        address mainBrandAddress;
         bool active;
     }
     /*
@@ -34,16 +32,33 @@ contract OfficialStore is ERC721, Ownable {
      * using bytes32 rather than string is more gass efisien
      * and make sure the data is under 32 characters
      */
-    mapping(address => string) private _mainAddressBrand;
+    mapping(address => bytes32) private _mainAddressBrand;
 
     // _contractBrandList represent list contract brand from the partners
     mapping(address => ContractBrand) private _contractBrandList;
 
     event BrandAddress(address indexed _from, string indexed _value);
+    event BrandContract(
+        address indexed _from,
+        ContractBrand indexed _contractBrand
+    );
 
-    event BrandContract(address indexed _from, ContractBrand indexed _contractBrand);
+    constructor() {
+        owner = msg.sender;
+    }
 
-    constructor() ERC721("OfficialStore", "OST") {}
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    modifier contractExist(address contractBrand) {
+        address _contractBrand = _contractBrandList[contractBrand].mainBrandAddress;
+        if (_contractBrandExist(_contractBrand)) {
+            revert ContractNoExist();
+        }
+        _;
+    }
 
     /*
      * setBrandContract will set an address as official store brand name
@@ -54,11 +69,12 @@ contract OfficialStore is ERC721, Ownable {
         external
         onlyOwner
     {
-        string memory _brandName = _mainAddressBrand[mainBrandAddress];
-        if (!compareStrings(_brandName, "")) {
+        bytes32 _brandName = _mainAddressBrand[mainBrandAddress];
+        if (_brandName[0] != 0) {
             revert ContractAlreadyHaveBrandName();
         }
-        _mainAddressBrand[mainBrandAddress] = brandName;
+        bytes32 newInput = stringToBytes32(brandName);
+        _mainAddressBrand[mainBrandAddress] = newInput;
         emit BrandAddress(mainBrandAddress, brandName);
     }
 
@@ -69,26 +85,37 @@ contract OfficialStore is ERC721, Ownable {
      */
     function setContractOS(
         address contractAddress,
-        ContractBrand memory contractBrandInfo
+        string memory nameBrand,
+        string memory districtBrand,
+        uint256 expiredDateBrand,
+        address mainAddressBrand,
+        bool isActive
     ) external onlyOwner {
         address _contractBrand = _contractBrandList[contractAddress].mainBrandAddress;
-        if (_contractBrandExist(_contractBrand)) {
+        if (!_contractBrandExist(_contractBrand)) {
             revert ContractAlreadyCreate();
         }
-        _contractBrandList[contractAddress] = contractBrandInfo;
-        emit BrandContract(contractAddress, contractBrandInfo);
+        ContractBrand memory newContractBrand = ContractBrand({
+            name: stringToBytes32(nameBrand),
+            district: stringToBytes32(districtBrand),
+            expiredDate: expiredDateBrand + block.timestamp,
+            mainBrandAddress: mainAddressBrand,
+            active: isActive
+        });
+        _contractBrandList[contractAddress] = newContractBrand;
+        emit BrandContract(contractAddress, newContractBrand);
     }
 
     /*
      * enableContractOS will set active existing address to activate the brand official store
      * contractAddress is destination the address assign enable as the official store
      */
-    function enableContractOS(address contractAddress) external onlyOwner {
-        address _contractBrand = _contractBrandList[contractAddress].mainBrandAddress;
+    function enableContractOS(address contractAddress)
+        external
+        onlyOwner
+        contractExist(contractAddress)
+    {
         bool brandStatus = _contractBrandList[contractAddress].active;
-        if (!_contractBrandExist(_contractBrand)) {
-            revert ContractNoExist();
-        }
         if (brandStatus == true) {
             revert ContractAlreadyActive();
         }
@@ -99,12 +126,12 @@ contract OfficialStore is ERC721, Ownable {
      * disableContractOS will set inactive existing address to activate the brand official store
      * contractAddress is destination the address to disable as the official store
      */
-    function disableContractOS(address contractAddress) external onlyOwner {
-        address _contractBrand = _contractBrandList[contractAddress].mainBrandAddress;
+    function disableContractOS(address contractAddress)
+        external
+        onlyOwner
+        contractExist(contractAddress)
+    {
         bool brandStatus = _contractBrandList[contractAddress].active;
-        if (!_contractBrandExist(_contractBrand)) {
-            revert ContractNoExist();
-        }
         if (brandStatus == false) {
             revert ContractAlreadyInactive();
         }
@@ -119,12 +146,13 @@ contract OfficialStore is ERC721, Ownable {
     function extendContractOS(address contractAddress, uint256 ts)
         external
         onlyOwner
+        contractExist(contractAddress)
     {
-        address _contractBrand = _contractBrandList[contractAddress].mainBrandAddress;
-        if (!_contractBrandExist(_contractBrand)) {
-            revert ContractNoExist();
+        uint256 currentTime = block.timestamp;
+        if (ts <= currentTime) {
+            revert TimeIsIncorect();
         }
-        _contractBrandList[contractAddress].expiredDate = ts;
+        _contractBrandList[contractAddress].expiredDate = uint64(ts);
     }
 
     /*
@@ -136,11 +164,11 @@ contract OfficialStore is ERC721, Ownable {
         view
         returns (string memory brandName)
     {
-        string memory _brandName = _mainAddressBrand[brandAddress];
-        if (compareStrings(_brandName, "")) {
+        bytes32 _brandName = _mainAddressBrand[brandAddress];
+        if (_brandName[0] == 0) {
             revert ContractDoesntHaveBrandName();
         }
-        return _mainAddressBrand[brandAddress];
+        return bytes32ToString(_brandName);
     }
 
     /*
@@ -149,12 +177,9 @@ contract OfficialStore is ERC721, Ownable {
     function getContractBrandFromAddress(address contractAddress)
         public
         view
+        contractExist(contractAddress)
         returns (ContractBrand memory)
     {
-        address _contractBrand = _contractBrandList[contractAddress].mainBrandAddress;
-        if (!_contractBrandExist(_contractBrand)) {
-            revert ContractNoExist();
-        }
         return _contractBrandList[contractAddress];
     }
 
@@ -168,36 +193,32 @@ contract OfficialStore is ERC721, Ownable {
         address contractAddress,
         string memory brandName,
         uint256 unixTimeNow
-    ) public view returns (string memory active) {
-        string memory _mainBrandAddress = _mainAddressBrand[_contractBrandList[contractAddress].mainBrandAddress];
+    )
+        public
+        view
+        contractExist(contractAddress)
+        returns (string memory active)
+    {
+        bytes32 _mainBrandAddress = _mainAddressBrand[
+            _contractBrandList[contractAddress].mainBrandAddress
+        ];
+        bytes32 _brandName = stringToBytes32(brandName);
         bool _active = _contractBrandList[contractAddress].active;
-        address _contractBrand = _contractBrandList[contractAddress].mainBrandAddress;
+        uint256 _expiredDate = _contractBrandList[contractAddress].expiredDate;
 
-        if (!_contractBrandExist(_contractBrand)) {
-            revert ContractNoExist();
-        }
-        if (!_active) {
-            revert ContractAlreadyInactive();
-        }
-
-        if (!compareStrings(_mainBrandAddress, brandName)) {
+        if (_mainBrandAddress != _brandName) {
             revert CompanyNotOfficialStore();
         }
 
-        if (_contractBrandList[contractAddress].expiredDate < unixTimeNow) {
-            revert CompanyInactive();
+        if (!_active) {
+            return "INACTIVE";
+        }
+
+        if (_expiredDate < unixTimeNow) {
+            return "INACTIVE";
         }
 
         return "ACTIVE";
-    }
-
-    // compareStrings from the brand
-    function compareStrings(string memory a, string memory b)
-        public
-        pure
-        returns (bool)
-    {
-        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
     }
 
     function _contractBrandExist(address _contractAddressBrand)
@@ -205,9 +226,37 @@ contract OfficialStore is ERC721, Ownable {
         pure
         returns (bool)
     {
-        if (_contractAddressBrand == address(0)) {
-            return false;
+        return _contractAddressBrand == address(0);
+    }
+
+    function stringToBytes32(string memory source)
+        private
+        pure
+        returns (bytes32 result)
+    {
+        bytes memory tempEmptyStringTest = bytes(source);
+        if (tempEmptyStringTest.length == 0) {
+            return 0x0;
         }
-        return true;
+
+        assembly {
+            result := mload(add(source, 32))
+        }
+    }
+
+    function bytes32ToString(bytes32 _bytes32)
+        private
+        pure
+        returns (string memory)
+    {
+        uint8 i = 0;
+        while (i < 32 && _bytes32[i] != 0) {
+            i++;
+        }
+        bytes memory bytesArray = new bytes(i);
+        for (i = 0; i < 32 && _bytes32[i] != 0; i++) {
+            bytesArray[i] = _bytes32[i];
+        }
+        return string(bytesArray);
     }
 }
