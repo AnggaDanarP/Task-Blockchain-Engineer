@@ -23,10 +23,10 @@ contract OfficialStore is ERC721, Ownable {
      * `active` will represent activation brand as principle official store
      */
     struct ContractBrand {
-        bytes32 name;
-        bytes32 district;
-        uint256 expiredDate;
+        string name;
+        string district;
         address mainBrandAddress;
+        uint256 expiredDate;
         bool active;
     }
     /*
@@ -34,12 +34,12 @@ contract OfficialStore is ERC721, Ownable {
      * using bytes32 rather than string is more gass efisien
      * and make sure the data is under 32 characters
      */
-    mapping(address => bytes32) private _mainAddressBrand;
+    mapping(address => string) private _mainAddressBrand;
 
     // _contractBrandList represent list contract brand from the partners
     mapping(address => ContractBrand) private _contractBrandList;
 
-    event BrandAddress(address indexed _from, bytes32 _value);
+    event BrandAddress(address indexed _from, string indexed _value);
 
     event BrandContract(address indexed _from, ContractBrand indexed _contractBrand);
 
@@ -50,12 +50,12 @@ contract OfficialStore is ERC721, Ownable {
      * mainBrandAddress is destination the address assign as brand
      * brandName will represent brand name
      */
-    function setBrandContract(address mainBrandAddress, bytes32 brandName)
+    function setBrandContract(address mainBrandAddress, string memory brandName)
         external
         onlyOwner
     {
-        bytes32 _brandName = _mainAddressBrand[mainBrandAddress];
-        if (_brandName.length > 0) {
+        string memory _brandName = _mainAddressBrand[mainBrandAddress];
+        if (!compareStrings(_brandName, "")) {
             revert ContractAlreadyHaveBrandName();
         }
         _mainAddressBrand[mainBrandAddress] = brandName;
@@ -134,10 +134,10 @@ contract OfficialStore is ERC721, Ownable {
     function getBrandFromAddress(address brandAddress)
         public
         view
-        returns (bytes32 brandName)
+        returns (string memory brandName)
     {
-        bytes32 _brandName = _mainAddressBrand[brandAddress];
-        if (_brandName.length == 0) {
+        string memory _brandName = _mainAddressBrand[brandAddress];
+        if (compareStrings(_brandName, "")) {
             revert ContractDoesntHaveBrandName();
         }
         return _mainAddressBrand[brandAddress];
@@ -166,10 +166,10 @@ contract OfficialStore is ERC721, Ownable {
      */
     function isContractBrandActive(
         address contractAddress,
-        bytes32 brandName,
+        string memory brandName,
         uint256 unixTimeNow
     ) public view returns (string memory active) {
-        bytes32 _mainBrandAddress = _mainAddressBrand[_contractBrandList[contractAddress].mainBrandAddress];
+        string memory _mainBrandAddress = _mainAddressBrand[_contractBrandList[contractAddress].mainBrandAddress];
         bool _active = _contractBrandList[contractAddress].active;
         address _contractBrand = _contractBrandList[contractAddress].mainBrandAddress;
 
@@ -180,7 +180,7 @@ contract OfficialStore is ERC721, Ownable {
             revert ContractAlreadyInactive();
         }
 
-        if (_mainBrandAddress == brandName) {
+        if (!compareStrings(_mainBrandAddress, brandName)) {
             revert CompanyNotOfficialStore();
         }
 
@@ -192,13 +192,13 @@ contract OfficialStore is ERC721, Ownable {
     }
 
     // compareStrings from the brand
-    // function compareStrings(string memory a, string memory b)
-    //     public
-    //     pure
-    //     returns (bool)
-    // {
-    //     return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
-    // }
+    function compareStrings(string memory a, string memory b)
+        public
+        pure
+        returns (bool)
+    {
+        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
+    }
 
     function _contractBrandExist(address _contractAddressBrand)
         private
