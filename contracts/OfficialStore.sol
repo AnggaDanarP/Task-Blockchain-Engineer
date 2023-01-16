@@ -25,7 +25,7 @@ contract OfficialStore is ERC721, Ownable {
     struct ContractBrand {
         bytes32 name;
         bytes32 district;
-        uint48 expiredDate;
+        uint256 expiredDate;
         address mainBrandAddress;
         bool active;
     }
@@ -116,7 +116,7 @@ contract OfficialStore is ERC721, Ownable {
      * contractAddress is destination the address assign to extend
      * ts is unix timestamp extend the contract address
      */
-    function extendContractOS(address contractAddress, uint48 ts)
+    function extendContractOS(address contractAddress, uint256 ts)
         external
         onlyOwner
     {
